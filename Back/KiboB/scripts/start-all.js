@@ -16,7 +16,7 @@ function run(name, command, args, env = {}) {
   return child;
 }
 
-const chatbot = run("chatbot", "node", ["chatbot-service/src/server.js"]);
+const chatbot = run("chatbot", "node", ["../../KiboE/src/index.js"]);
 const backend = run("backend", "node", ["src/server.js"]);
 
 function shutdown(signal) {

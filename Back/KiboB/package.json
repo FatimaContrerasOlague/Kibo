@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "chatbot": "node chatbot-service/src/server.js",
+    "chatbot": "node ../../KiboE/src/index.js",
     "start:all": "node scripts/start-all.js",
     "test": "echo \"No tests configured\""
   },

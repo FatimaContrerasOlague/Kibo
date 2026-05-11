@@ -1,15 +1,16 @@
 # Kibo Backend (Express)
 
-Backend principal y microservicio de chatbot para la plataforma Kibo.
+Backend principal de Kibo con integracion hacia KiboE como motor del chatbot.
 
 ## Servicios
 
 - Backend principal: `http://localhost:4000`
-- Microservicio chatbot: `http://localhost:4100`
+- KiboE (chatbot/logica IA): `http://localhost:3000`
 
 ## Requisitos
 
 - Node.js 18+
+- KiboE configurado con su `.env` y su base de datos PostgreSQL/Supabase
 
 ## Instalacion
 
@@ -30,6 +31,8 @@ Microservicio chatbot:
 ```bash
 npm run chatbot
 ```
+
+Ese comando ahora levanta KiboE desde `../../KiboE/src/index.js`.
 
 Ambos servicios a la vez:
 
@@ -96,9 +99,22 @@ Devuelve alertas de 1 dia, 8h, 4h, 1h antes de la entrega con recomendacion de l
 - `POST /api/chatbot/files`
 - `GET /api/chatbot/chat/:userId`
 
+El frontend sigue hablando con estos endpoints de KiboB, pero KiboB traduce la solicitud al contrato de KiboE.
+
 ## Persistencia
 
 - Backend principal: `data/db.json`
-- Chatbot service: `chatbot-service/data/chatbot-db.json`
 
-No requiere Postgres para desarrollo rapido.
+KiboB guarda localmente en `data/db.json`:
+
+- usuarios y tareas
+- archivos subidos
+- mapeo `userId -> sessionId` del chat
+
+KiboE guarda el historial real del chat y los recursos ingeridos en PostgreSQL/Supabase.
+
+## Notas de integracion con KiboE
+
+- `CHATBOT_SERVICE_URL` debe apuntar al servidor KiboE.
+- La subida de archivos de KiboB usa `POST /ingest` de KiboE para convertir el texto en recurso consultable.
+- El directorio `chatbot-service/` sigue en el repo como implementacion anterior, pero el flujo activo de la app ya no depende de el.

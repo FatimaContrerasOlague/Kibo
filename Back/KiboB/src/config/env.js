@@ -8,7 +8,7 @@ function toNumber(value, fallback) {
 module.exports = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: toNumber(process.env.PORT, 4000),
-  chatbotServiceUrl: process.env.CHATBOT_SERVICE_URL || "http://localhost:4100",
+  chatbotServiceUrl: process.env.CHATBOT_SERVICE_URL || "http://localhost:3000",
   openLibraryBaseUrl: process.env.OPEN_LIBRARY_BASE_URL || "https://openlibrary.org",
   dataFilePath:
     process.env.DATA_FILE_PATH || path.join(__dirname, "..", "..", "data", "db.json"),

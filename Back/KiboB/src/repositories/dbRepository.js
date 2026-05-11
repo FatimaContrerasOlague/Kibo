@@ -5,6 +5,7 @@ const defaultData = {
   users: [],
   tasks: [],
   chatbotFiles: [],
+  chatbotSessions: [],
 };
 
 let writeQueue = Promise.resolve();
@@ -29,6 +30,7 @@ async function readDb() {
       users: Array.isArray(parsed.users) ? parsed.users : [],
       tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
       chatbotFiles: Array.isArray(parsed.chatbotFiles) ? parsed.chatbotFiles : [],
+      chatbotSessions: Array.isArray(parsed.chatbotSessions) ? parsed.chatbotSessions : [],
     };
   } catch {
     return { ...defaultData };

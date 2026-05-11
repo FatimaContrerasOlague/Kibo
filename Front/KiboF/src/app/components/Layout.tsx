@@ -8,7 +8,7 @@ export function Layout() {
   const location = useLocation();
 
   const isAuthPage = location.pathname === '/' || location.pathname === '/register';
-  const showFloatingElephant = location.pathname !== '/chatbot';
+  const showFloatingElephant = !isAuthPage && location.pathname !== '/chatbot';
 
   if (!isAuthReady) {
     return (
@@ -26,7 +26,6 @@ export function Layout() {
     return (
       <div className="min-h-screen bg-background">
         <Outlet />
-        {showFloatingElephant && <FloatingElephant />}
       </div>
     );
   }
