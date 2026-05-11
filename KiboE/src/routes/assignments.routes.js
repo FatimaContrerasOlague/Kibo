@@ -1,3 +1,5 @@
+// src/routes/assignments.routes.js
+
 const express = require("express");
 const {
   analyzeAssignment,
@@ -6,45 +8,56 @@ const {
   listAssignments,
   recommendResourcesForAssignment,
 } = require("../services/tutor");
+const { asyncHandler } = require("../middleware/errorHandler");
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
-  try {
+function parsePagination(query, { defaultLimit = 50, maxLimit = 200 } = {}) {
+  const limit = Math.min(
+    Math.max(Number(query.limit) || defaultLimit, 1),
+    maxLimit,
+  );
+  const offset = Math.max(Number(query.offset) || 0, 0);
+  return { limit, offset };
+}
+
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
+    const { limit, offset } = parsePagination(req.query);
     const assignments = await listAssignments({
       userId: req.query.userId || null,
       status: req.query.status || null,
-      limit: Number(req.query.limit || 50),
+      limit,
+      offset,
     });
-    res.json({ ok: true, assignments });
-  } catch (error) {
-    console.error("[assignments] Error:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
+    res.json({
+      ok: true,
+      pagination: { limit, offset, count: assignments.length },
+      assignments,
+    });
+  }),
+);
 
-router.post("/analyze", async (req, res) => {
-  try {
+router.post(
+  "/analyze",
+  asyncHandler(async (req, res) => {
     const result = await analyzeAssignment(req.body);
     res.json({ ok: true, ...result });
-  } catch (error) {
-    console.error("[assignments] Error:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
+  }),
+);
 
-router.post("/", async (req, res) => {
-  try {
+router.post(
+  "/",
+  asyncHandler(async (req, res) => {
     const assignment = await createAssignment(req.body);
     res.status(201).json({ ok: true, assignment });
-  } catch (error) {
-    console.error("[assignments] Error:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
+  }),
+);
 
-router.post("/:id/recommendations", async (req, res) => {
-  try {
+router.post(
+  "/:id/recommendations",
+  asyncHandler(async (req, res) => {
     const result = await recommendResourcesForAssignment({
       assignmentId: req.params.id,
       limit: Number(req.body.limit || 5),
@@ -52,25 +65,18 @@ router.post("/:id/recommendations", async (req, res) => {
         typeof req.body.maxScore === "number" ? req.body.maxScore : undefined,
     });
     res.json({ ok: true, ...result });
-  } catch (error) {
-    console.error("[assignments] Error:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
+  }),
+);
 
-router.get("/:id", async (req, res) => {
-  try {
+router.get(
+  "/:id",
+  asyncHandler(async (req, res) => {
     const assignment = await getAssignmentById(req.params.id);
-
     if (!assignment) {
       return res.status(404).json({ ok: false, error: "Tarea no encontrada" });
     }
-
     res.json({ ok: true, assignment });
-  } catch (error) {
-    console.error("[assignments] Error:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
-  }
-});
+  }),
+);
 
 module.exports = router;

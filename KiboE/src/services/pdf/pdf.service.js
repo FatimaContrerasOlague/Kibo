@@ -1,6 +1,18 @@
+const https = require("https");
 const axios = require("axios");
 const { PDFParse } = require("pdf-parse");
 const { splitIntoChunks } = require("../chunker");
+
+// Agente HTTPS reutilizable para descarga de PDFs.
+// Algunos servidores publicos (p. ej. aprendeinea.inea.gob.mx) tienen la cadena
+// de certificados incompleta (no envian el intermedio). En esos casos se puede
+// activar PDF_ALLOW_INSECURE_TLS=true en .env para saltar la verificacion
+// unicamente en este cliente (no afecta al resto del backend).
+const pdfHttpsAgent = new https.Agent({
+  keepAlive: true,
+  rejectUnauthorized:
+    String(process.env.PDF_ALLOW_INSECURE_TLS).toLowerCase() !== "true",
+});
 
 function cleanPdfText(text) {
   return (text || "")
@@ -27,7 +39,9 @@ function validatePdfUrl(url) {
 }
 
 function estimateTokenCount(text) {
-  return Math.ceil((text || "").trim().split(/\s+/).filter(Boolean).length * 1.35);
+  return Math.ceil(
+    (text || "").trim().split(/\s+/).filter(Boolean).length * 1.35,
+  );
 }
 
 function buildPdfChunks(pages, maxChars = 1000) {
@@ -79,7 +93,9 @@ async function downloadPdfBuffer(url) {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     },
-    maxContentLength: 25 * 1024 * 1024,
+    maxContentLength: 5000 * 1024 * 1024,
+    maxRedirects: 5,
+    httpsAgent: pdfHttpsAgent,
   });
 
   const contentType = response.headers["content-type"] || "";
@@ -98,7 +114,9 @@ async function extractPdfText(buffer) {
     const content = cleanPdfText(data.text);
 
     if (!content) {
-      throw new Error("No se pudo extraer texto del PDF. Puede ser un PDF escaneado.");
+      throw new Error(
+        "No se pudo extraer texto del PDF. Puede ser un PDF escaneado.",
+      );
     }
 
     return {

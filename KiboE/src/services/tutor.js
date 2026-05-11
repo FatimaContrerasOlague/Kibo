@@ -1,3 +1,7 @@
+// src/services/tutor.js
+//
+// Logica del tutor: assignments, recomendaciones, resumenes y quizzes.
+
 const db = require("../db");
 const { getEmbedding } = require("./embeddings");
 const { generateJson, generateText } = require("./ai");
@@ -9,7 +13,12 @@ function normalizeQuestionType(type) {
   return allowedQuestionTypes.has(type) ? type : "multiple_choice";
 }
 
-async function listAssignments({ userId = null, status = null, limit = 50 } = {}) {
+async function listAssignments({
+  userId = null,
+  status = null,
+  limit = 50,
+  offset = 0,
+} = {}) {
   const filters = [];
   const params = [];
 
@@ -17,13 +26,16 @@ async function listAssignments({ userId = null, status = null, limit = 50 } = {}
     params.push(userId);
     filters.push(`user_id = $${params.length}`);
   }
-
   if (status) {
     params.push(status);
     filters.push(`status = $${params.length}`);
   }
 
-  params.push(limit);
+  params.push(Number(limit) || 50);
+  const limitParam = `$${params.length}`;
+  params.push(Number(offset) || 0);
+  const offsetParam = `$${params.length}`;
+
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
   const result = await db.query(
@@ -32,8 +44,9 @@ async function listAssignments({ userId = null, status = null, limit = 50 } = {}
     FROM public.assignments
     ${where}
     ORDER BY created_at DESC
-    LIMIT $${params.length};
-  `,
+    LIMIT ${limitParam}
+    OFFSET ${offsetParam};
+    `,
     params,
   );
 
@@ -42,14 +55,9 @@ async function listAssignments({ userId = null, status = null, limit = 50 } = {}
 
 async function getAssignmentById(id) {
   const result = await db.query(
-    `
-    SELECT *
-    FROM public.assignments
-    WHERE id = $1;
-  `,
+    "SELECT * FROM public.assignments WHERE id = $1;",
     [id],
   );
-
   return result.rows[0] || null;
 }
 
@@ -73,17 +81,8 @@ async function createAssignment({
       (user_id, title, prompt, subject, grade_level, detected_topics, difficulty, status)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *;
-  `,
-    [
-      userId,
-      title,
-      prompt,
-      subject,
-      gradeLevel,
-      detectedTopics,
-      difficulty,
-      status,
-    ],
+    `,
+    [userId, title, prompt, subject, gradeLevel, detectedTopics, difficulty, status],
   );
 
   return result.rows[0];
@@ -103,10 +102,7 @@ async function analyzeAssignment({
 
   if (assignmentId) {
     assignment = await getAssignmentById(assignmentId);
-    if (!assignment) {
-      throw new Error("assignmentId no encontrado");
-    }
-
+    if (!assignment) throw new Error("assignmentId no encontrado");
     assignmentPrompt = assignment.prompt;
     assignmentTitle = assignment.title;
     assignmentGradeLevel = assignment.grade_level;
@@ -143,7 +139,6 @@ ${assignmentPrompt}
   });
 
   let result;
-
   if (assignment) {
     result = await db.query(
       `
@@ -157,7 +152,7 @@ ${assignmentPrompt}
           updated_at = NOW()
       WHERE id = $6
       RETURNING *;
-    `,
+      `,
       [
         analysis.title,
         analysis.subject || null,
@@ -174,7 +169,7 @@ ${assignmentPrompt}
         (user_id, title, prompt, subject, grade_level, detected_topics, difficulty, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'analyzed')
       RETURNING *;
-    `,
+      `,
       [
         userId,
         analysis.title || assignmentTitle,
@@ -193,15 +188,15 @@ ${assignmentPrompt}
   };
 }
 
-async function recommendResourcesForAssignment({ assignmentId, limit = 5, maxScore = 0.5 }) {
-  if (!assignmentId) {
-    throw new Error("assignmentId requerido");
-  }
+async function recommendResourcesForAssignment({
+  assignmentId,
+  limit = 5,
+  maxScore = 0.5,
+}) {
+  if (!assignmentId) throw new Error("assignmentId requerido");
 
   const assignment = await getAssignmentById(assignmentId);
-  if (!assignment) {
-    throw new Error("assignmentId no encontrado");
-  }
+  if (!assignment) throw new Error("assignmentId no encontrado");
 
   const searchText = [
     assignment.title,
@@ -213,52 +208,47 @@ async function recommendResourcesForAssignment({ assignmentId, limit = 5, maxSco
     .filter(Boolean)
     .join("\n");
 
+  // Embedding fuera de la transaccion (llamada externa a Gemini).
   const embedding = await getEmbedding(searchText);
-  const chunks = (await searchRelevantChunks(embedding, limit)).filter(
+  const relevant = (await searchRelevantChunks(embedding, limit)).filter(
     (chunk) => Number(chunk.score) <= maxScore,
   );
 
-  await db.query(
-    "DELETE FROM public.assignment_recommendations WHERE assignment_id = $1",
-    [assignment.id],
-  );
-
-  const recommendations = [];
-
-  for (const chunk of chunks) {
-    const source = formatChunkSource(chunk);
-    const reason = buildRecommendationReason(assignment, source);
-
-    const result = await db.query(
-      `
-      INSERT INTO public.assignment_recommendations
-        (assignment_id, resource_id, chunk_id, reason, relevance_score)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *;
-    `,
-      [
-        assignment.id,
-        source.resourceId,
-        source.chunkId,
-        reason,
-        source.score,
-      ],
+  // Persistencia transaccional: borra y reinserta atomicamente.
+  return db.withTransaction(async (client) => {
+    await client.query(
+      "DELETE FROM public.assignment_recommendations WHERE assignment_id = $1",
+      [assignment.id],
     );
 
-    recommendations.push({
-      recommendation: result.rows[0],
-      source,
-    });
-  }
+    const recommendations = [];
+    for (const chunk of relevant) {
+      const source = formatChunkSource(chunk);
+      const reason = buildRecommendationReason(assignment, source);
 
-  return {
-    assignment,
-    recommendations,
-  };
+      const result = await client.query(
+        `
+        INSERT INTO public.assignment_recommendations
+          (assignment_id, resource_id, chunk_id, reason, relevance_score)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *;
+        `,
+        [assignment.id, source.resourceId, source.chunkId, reason, source.score],
+      );
+
+      recommendations.push({
+        recommendation: result.rows[0],
+        source,
+      });
+    }
+
+    return { assignment, recommendations };
+  });
 }
 
 function buildRecommendationReason(assignment, source) {
-  const topic = assignment.detected_topics?.[0] || assignment.subject || "la tarea";
+  const topic =
+    assignment.detected_topics?.[0] || assignment.subject || "la tarea";
   const page = source.pageNumber ? `, pagina ${source.pageNumber}` : "";
   const title = source.resourceTitle || "este recurso";
   return `Kibo recomienda ${title}${page} porque contiene informacion relacionada con ${topic}.`;
@@ -271,9 +261,7 @@ async function summarizeText({
   resourceId = null,
   documentId = null,
 }) {
-  if (!text || !text.trim()) {
-    throw new Error("text requerido");
-  }
+  if (!text || !text.trim()) throw new Error("text requerido");
 
   const content = await generateText({
     systemPrompt: `
@@ -297,7 +285,7 @@ ${text}
       (resource_id, document_id, user_id, summary_type, content)
     VALUES ($1, $2, $3, $4, $5)
     RETURNING *;
-  `,
+    `,
     [resourceId, documentId, userId, summaryType, content],
   );
 
@@ -313,9 +301,7 @@ async function createQuiz({
   assignmentId = null,
   resourceId = null,
 }) {
-  if (!topic && !text) {
-    throw new Error("topic o text requerido");
-  }
+  if (!topic && !text) throw new Error("topic o text requerido");
 
   const quiz = await generateJson({
     systemPrompt: `
@@ -350,53 +336,53 @@ ${text || ""}
     maxOutputTokens: 1600,
   });
 
-  const quizResult = await db.query(
-    `
-    INSERT INTO public.quizzes
-      (user_id, assignment_id, resource_id, title, subject, topic)
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING *;
-  `,
-    [
-      userId,
-      assignmentId,
-      resourceId,
-      quiz.title || `Quiz de ${topic || "practica"}`,
-      quiz.subject || subject,
-      quiz.topic || topic,
-    ],
-  );
-
-  const savedQuiz = quizResult.rows[0];
   const questions = Array.isArray(quiz.questions) ? quiz.questions : [];
-  const savedQuestions = [];
 
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const questionResult = await db.query(
+  return db.withTransaction(async (client) => {
+    const quizResult = await client.query(
       `
-      INSERT INTO public.quiz_questions
-        (quiz_id, question, question_type, options, correct_answer, explanation, position)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO public.quizzes
+        (user_id, assignment_id, resource_id, title, subject, topic)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *;
-    `,
+      `,
       [
-        savedQuiz.id,
-        q.question,
-        normalizeQuestionType(q.questionType),
-        JSON.stringify(q.options || []),
-        q.correctAnswer || null,
-        q.explanation || null,
-        i,
+        userId,
+        assignmentId,
+        resourceId,
+        quiz.title || `Quiz de ${topic || "practica"}`,
+        quiz.subject || subject,
+        quiz.topic || topic,
       ],
     );
-    savedQuestions.push(questionResult.rows[0]);
-  }
 
-  return {
-    quiz: savedQuiz,
-    questions: savedQuestions,
-  };
+    const savedQuiz = quizResult.rows[0];
+    const savedQuestions = [];
+
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const questionResult = await client.query(
+        `
+        INSERT INTO public.quiz_questions
+          (quiz_id, question, question_type, options, correct_answer, explanation, position)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *;
+        `,
+        [
+          savedQuiz.id,
+          q.question,
+          normalizeQuestionType(q.questionType),
+          JSON.stringify(q.options || []),
+          q.correctAnswer || null,
+          q.explanation || null,
+          i,
+        ],
+      );
+      savedQuestions.push(questionResult.rows[0]);
+    }
+
+    return { quiz: savedQuiz, questions: savedQuestions };
+  });
 }
 
 module.exports = {
