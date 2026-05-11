@@ -209,7 +209,7 @@ async function recommendResourcesForAssignment({
     .join("\n");
 
   // Embedding fuera de la transaccion (llamada externa a Gemini).
-  const embedding = await getEmbedding(searchText);
+  const embedding = await getEmbedding(searchText, { role: "query" });
   const relevant = (await searchRelevantChunks(embedding, limit)).filter(
     (chunk) => Number(chunk.score) <= maxScore,
   );

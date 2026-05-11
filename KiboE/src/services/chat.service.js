@@ -132,7 +132,7 @@ Pregunta actual del estudiante:
 // ─── Busqueda con umbral silencioso ────────────────────────────────────────
 
 async function retrieveContext({ searchQuery, topK }) {
-  const embedding = await getEmbedding(searchQuery);
+  const embedding = await getEmbedding(searchQuery, { role: "query" });
   const raw = await searchRelevantChunks(embedding, topK);
   // Filtrado silencioso: si estan lejos del umbral los descartamos; el LLM
   // entonces respondera con conocimiento general sin avisar del faltante.

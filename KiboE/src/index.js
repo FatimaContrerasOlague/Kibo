@@ -82,4 +82,12 @@ app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);
+
+  // Precarga del modelo local si corresponde. No bloquea el listen.
+  if ((process.env.EMBEDDINGS_PROVIDER || "").toLowerCase() === "local") {
+    const { warmup } = require("./services/embeddings");
+    warmup().catch((err) => {
+      console.error("[embeddings.local] Warmup fallo:", err.message);
+    });
+  }
 });

@@ -19,6 +19,8 @@ pnpm-debug.log*
 .cache/
 .eslintcache
 
+.npm-cache/
+
 # Local environment files
 .env
 .env.*
