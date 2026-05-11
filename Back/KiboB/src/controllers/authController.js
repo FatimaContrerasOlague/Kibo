@@ -1,5 +1,4 @@
-const { readDb, writeDb } = require("../repositories/dbRepository");
-const { createId } = require("../utils/id");
+const users = require("../repositories/userRepository");
 const { hashPassword, verifyPassword } = require("../utils/password");
 const { HttpError } = require("../utils/httpError");
 
@@ -20,22 +19,17 @@ async function register(req, res, next) {
       throw new HttpError(400, "name, email y password son requeridos");
     }
 
-    const db = await readDb();
-    const existing = db.users.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const existing = await users.findUserByEmail(normalizedEmail);
     if (existing) {
       throw new HttpError(409, "El correo ya esta registrado");
     }
 
-    const user = {
-      id: createId("usr"),
-      name: String(name).trim(),
-      email: String(email).toLowerCase().trim(),
+    const user = await users.createUser({
       passwordHash: hashPassword(String(password)),
-      createdAt: new Date().toISOString(),
-    };
-
-    db.users.push(user);
-    await writeDb(db);
+      name: String(name).trim(),
+      email: normalizedEmail,
+    });
 
     res.status(201).json({ user: sanitizeUser(user) });
   } catch (error) {
@@ -50,8 +44,7 @@ async function login(req, res, next) {
       throw new HttpError(400, "email y password son requeridos");
     }
 
-    const db = await readDb();
-    const user = db.users.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
+    const user = await users.findUserByEmail(String(email).toLowerCase().trim());
     if (!user || !verifyPassword(String(password), user.passwordHash)) {
       throw new HttpError(401, "Credenciales invalidas");
     }

@@ -14,7 +14,6 @@ async function getOrCreateSession(userId) {
   const payload = await callChatbot("/chat/sessions", {
     method: "POST",
     body: JSON.stringify({
-      userId,
       title: `Chat de ${userId}`,
     }),
   });

@@ -385,12 +385,254 @@ ${text || ""}
   });
 }
 
+// ─── POR resourceId: contenido + resumen + quiz + pack de estudio ──────────
+
+const STUDY_MAX_CHARS = Number(process.env.STUDY_MAX_CHARS || 80_000);
+
+/**
+ * Trae el recurso con su texto completo (ultimo documento).
+ */
+async function getResourceWithContent(resourceId) {
+  const result = await db.query(
+    `
+    SELECT r.id, r.title, r.subject, r.grade_level, r.resource_type, r.metadata,
+           d.id AS document_id, d.raw_content
+    FROM public.resources r
+    LEFT JOIN public.documents d ON d.resource_id = r.id
+    WHERE r.id = $1
+    ORDER BY d.created_at DESC NULLS LAST
+    LIMIT 1;
+    `,
+    [resourceId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return row;
+}
+
+function truncateSmart(text, maxChars) {
+  if (!text) return "";
+  if (text.length <= maxChars) return text;
+  // Mantenemos el inicio y el final para cubrir intro y conclusiones.
+  const headSize = Math.floor(maxChars * 0.7);
+  const tailSize = maxChars - headSize - 200;
+  return (
+    text.slice(0, headSize) +
+    "\n\n[...texto truncado por tamano...]\n\n" +
+    text.slice(-tailSize)
+  );
+}
+
+/**
+ * Genera (y guarda) un resumen de un recurso existente usando su texto.
+ */
+async function summarizeResource({
+  resourceId,
+  summaryType = "study_guide",
+  userId = null,
+  maxChars = STUDY_MAX_CHARS,
+}) {
+  const resource = await getResourceWithContent(resourceId);
+  if (!resource) throw new Error("resourceId no encontrado");
+  if (!resource.raw_content) {
+    throw new Error("El recurso no tiene contenido para resumir");
+  }
+
+  const text = truncateSmart(resource.raw_content, maxChars);
+  return summarizeText({
+    text,
+    summaryType,
+    userId,
+    resourceId: resource.id,
+    documentId: resource.document_id,
+  });
+}
+
+/**
+ * Genera (y guarda) un quiz basado en el contenido de un recurso existente.
+ */
+async function createQuizFromResource({
+  resourceId,
+  questionCount = 5,
+  userId = null,
+  assignmentId = null,
+  maxChars = STUDY_MAX_CHARS,
+}) {
+  const resource = await getResourceWithContent(resourceId);
+  if (!resource) throw new Error("resourceId no encontrado");
+  if (!resource.raw_content) {
+    throw new Error("El recurso no tiene contenido para generar quiz");
+  }
+
+  const text = truncateSmart(resource.raw_content, maxChars);
+  return createQuiz({
+    topic: resource.title,
+    subject: resource.subject,
+    text,
+    questionCount,
+    userId,
+    assignmentId,
+    resourceId: resource.id,
+  });
+}
+
+/**
+ * "Study pack": en una sola llamada al LLM produce resumen + quiz +
+ * conceptos clave + temario sugerido, y lo guarda en DB.
+ * Ahorra cuota vs llamar 3 endpoints por separado.
+ */
+async function generateStudyPack({
+  resourceId,
+  questionCount = 5,
+  summaryType = "study_guide",
+  userId = null,
+  maxChars = STUDY_MAX_CHARS,
+  onProgress = () => {},
+}) {
+  const resource = await getResourceWithContent(resourceId);
+  if (!resource) throw new Error("resourceId no encontrado");
+  if (!resource.raw_content) {
+    throw new Error("El recurso no tiene contenido");
+  }
+
+  const text = truncateSmart(resource.raw_content, maxChars);
+
+  onProgress({ stage: "study_llm_start", chars: text.length });
+
+  const pack = await generateJson({
+    systemPrompt: `
+Eres Kibo, un tutor virtual. Analiza material educativo y devuelve UNICAMENTE
+un JSON valido (sin markdown, sin texto extra).
+Responde en espanol neutral. No inventes datos.
+`.trim(),
+    userPrompt: `
+A partir de este material educativo, devuelve:
+
+{
+  "summary": "resumen tipo ${summaryType} (5-10 parrafos)",
+  "keyConcepts": [
+    { "term": "concepto 1", "definition": "definicion breve" }
+  ],
+  "outline": ["punto 1", "punto 2"],
+  "quiz": {
+    "title": "titulo breve del quiz",
+    "subject": "materia",
+    "topic": "tema principal",
+    "questions": [
+      {
+        "question": "texto de la pregunta",
+        "questionType": "multiple_choice",
+        "options": ["A","B","C","D"],
+        "correctAnswer": "la opcion correcta, tal cual aparece en options",
+        "explanation": "por que es la correcta, breve"
+      }
+    ]
+  }
+}
+
+Genera ${questionCount} preguntas en el quiz, variando dificultad.
+Materia del recurso: ${resource.subject || "no indicada"}
+Titulo del recurso: ${resource.title || "(sin titulo)"}
+
+Texto:
+"""
+${text}
+"""
+`.trim(),
+    temperature: 0.3,
+    maxOutputTokens: 2400,
+  });
+
+  onProgress({ stage: "study_llm_done" });
+
+  // Persistimos summary + quiz (los conceptos y outline van en el response,
+  // no tienen tabla propia por simplicidad).
+  const savedSummary = await db.query(
+    `
+    INSERT INTO public.summaries
+      (resource_id, document_id, user_id, summary_type, content)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING *;
+    `,
+    [
+      resource.id,
+      resource.document_id,
+      userId,
+      summaryType,
+      pack.summary || "",
+    ],
+  );
+
+  const questions = Array.isArray(pack.quiz?.questions) ? pack.quiz.questions : [];
+  const savedQuiz = await db.withTransaction(async (client) => {
+    const q = pack.quiz || {};
+    const quizResult = await client.query(
+      `
+      INSERT INTO public.quizzes
+        (user_id, assignment_id, resource_id, title, subject, topic)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *;
+      `,
+      [
+        userId,
+        null,
+        resource.id,
+        q.title || `Quiz de ${resource.title || "practica"}`,
+        q.subject || resource.subject,
+        q.topic || resource.title,
+      ],
+    );
+    const quiz = quizResult.rows[0];
+
+    const savedQuestions = [];
+    for (let i = 0; i < questions.length; i++) {
+      const qq = questions[i];
+      const r = await client.query(
+        `
+        INSERT INTO public.quiz_questions
+          (quiz_id, question, question_type, options, correct_answer, explanation, position)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *;
+        `,
+        [
+          quiz.id,
+          qq.question,
+          normalizeQuestionType(qq.questionType),
+          JSON.stringify(qq.options || []),
+          qq.correctAnswer || null,
+          qq.explanation || null,
+          i,
+        ],
+      );
+      savedQuestions.push(r.rows[0]);
+    }
+
+    return { quiz, questions: savedQuestions };
+  });
+
+  return {
+    resource: {
+      id: resource.id,
+      title: resource.title,
+      subject: resource.subject,
+      gradeLevel: resource.grade_level,
+    },
+    summary: savedSummary.rows[0],
+    keyConcepts: Array.isArray(pack.keyConcepts) ? pack.keyConcepts : [],
+    outline: Array.isArray(pack.outline) ? pack.outline : [],
+    quiz: savedQuiz,
+  };
+}
+
 module.exports = {
   analyzeAssignment,
   createAssignment,
   createQuiz,
+  createQuizFromResource,
+  generateStudyPack,
   getAssignmentById,
   listAssignments,
   recommendResourcesForAssignment,
+  summarizeResource,
   summarizeText,
 };

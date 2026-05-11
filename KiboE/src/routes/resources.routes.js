@@ -1,19 +1,46 @@
 // src/routes/resources.routes.js
 
 const express = require("express");
+const multer = require("multer");
 const db = require("../db");
 const {
   ingestDocument,
+  ingestPdfBuffer,
   ingestPdfUrl,
   ingestPdfUrls,
   ingestUrl,
   ingestUrls,
 } = require("../services/ingest");
+const {
+  createQuizFromResource,
+  generateStudyPack,
+  summarizeResource,
+} = require("../services/tutor");
 const { asyncHandler } = require("../middleware/errorHandler");
 
 const router = express.Router();
 
-// ─── Helpers de paginacion ──────────────────────────────────────────────────
+// ─── Upload de PDFs ─────────────────────────────────────────────────────────
+const PDF_UPLOAD_MAX_BYTES = Number(
+  process.env.PDF_UPLOAD_MAX_BYTES || process.env.PDF_MAX_BYTES || 50 * 1024 * 1024,
+);
+
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: PDF_UPLOAD_MAX_BYTES,
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    const ok =
+      file.mimetype === "application/pdf" ||
+      (file.originalname || "").toLowerCase().endsWith(".pdf");
+    if (!ok) return cb(new Error("Solo se aceptan archivos PDF"));
+    cb(null, true);
+  },
+});
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 function parsePagination(query, { defaultLimit = 50, maxLimit = 200 } = {}) {
   const limit = Math.min(
     Math.max(Number(query.limit) || defaultLimit, 1),
@@ -23,7 +50,16 @@ function parsePagination(query, { defaultLimit = 50, maxLimit = 200 } = {}) {
   return { limit, offset };
 }
 
-// ─── Listar recursos ────────────────────────────────────────────────────────
+function parseBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null || value === "") return defaultValue;
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "yes", "y"].includes(String(value).toLowerCase());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LISTAR Y DETALLE
+// ═══════════════════════════════════════════════════════════════════════════
+
 router.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -100,7 +136,10 @@ router.get(
   }),
 );
 
-// ─── Ingestas ───────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// INGESTA POR TEXTO O URL
+// ═══════════════════════════════════════════════════════════════════════════
+
 router.post(
   "/ingest",
   asyncHandler(async (req, res) => {
@@ -209,6 +248,192 @@ router.post(
       force,
     });
     res.json({ ok: true, results });
+  }),
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INGESTA POR ARCHIVO (multipart upload)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// POST /resources/ingest/pdf-file
+// Form fields:
+//   - pdf         (File, requerido)
+//   - title       (string, opcional)
+//   - subject     (string, opcional)
+//   - gradeLevel  (string, opcional)
+//   - sourceName  (string, opcional)
+//   - force       (bool, opcional)
+router.post(
+  "/ingest/pdf-file",
+  pdfUpload.single("pdf"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Archivo PDF requerido en el campo "pdf"' });
+    }
+
+    const result = await ingestPdfBuffer({
+      buffer: req.file.buffer,
+      originalFilename: req.file.originalname,
+      title: req.body.title || null,
+      subject: req.body.subject || null,
+      gradeLevel: req.body.gradeLevel || null,
+      sourceName: req.body.sourceName || "upload",
+      force: parseBoolean(req.body.force, false),
+    });
+
+    res.json({ ok: true, ...result });
+  }),
+);
+
+// POST /resources/ingest/pdf-file/study
+// Sube PDF + corre el flujo completo: resumen + conceptos + quiz.
+router.post(
+  "/ingest/pdf-file/study",
+  pdfUpload.single("pdf"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Archivo PDF requerido en el campo "pdf"' });
+    }
+
+    const ingest = await ingestPdfBuffer({
+      buffer: req.file.buffer,
+      originalFilename: req.file.originalname,
+      title: req.body.title || null,
+      subject: req.body.subject || null,
+      gradeLevel: req.body.gradeLevel || null,
+      sourceName: req.body.sourceName || "upload",
+      force: parseBoolean(req.body.force, false),
+    });
+
+    const study = await generateStudyPack({
+      resourceId: ingest.resourceId,
+      questionCount: Number(req.body.questionCount || 5),
+      summaryType: req.body.summaryType || "study_guide",
+      userId: req.body.userId || null,
+    });
+
+    res.json({ ok: true, ingest, ...study });
+  }),
+);
+
+// POST /resources/ingest/pdf-file/study/stream
+// Igual que el anterior pero con progreso en SSE. Eventos emitidos:
+//   upload_received, parsing_pdf, pdf_parsed, embeddings_start,
+//   embeddings_done, db_start, ingest_done, study_llm_start,
+//   study_llm_done, done, error.
+router.post(
+  "/ingest/pdf-file/study/stream",
+  pdfUpload.single("pdf"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Archivo PDF requerido en el campo "pdf"' });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+
+    let clientClosed = false;
+    req.on("close", () => {
+      clientClosed = true;
+    });
+
+    const write = (event) => {
+      if (clientClosed) return;
+      try {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    write({ stage: "upload_received", filename: req.file.originalname });
+
+    try {
+      const ingest = await ingestPdfBuffer({
+        buffer: req.file.buffer,
+        originalFilename: req.file.originalname,
+        title: req.body.title || null,
+        subject: req.body.subject || null,
+        gradeLevel: req.body.gradeLevel || null,
+        sourceName: req.body.sourceName || "upload",
+        force: parseBoolean(req.body.force, false),
+        onProgress: write,
+      });
+
+      const study = await generateStudyPack({
+        resourceId: ingest.resourceId,
+        questionCount: Number(req.body.questionCount || 5),
+        summaryType: req.body.summaryType || "study_guide",
+        userId: req.body.userId || null,
+        onProgress: write,
+      });
+
+      write({ stage: "done", ingest, ...study });
+    } catch (err) {
+      write({ stage: "error", error: err.message });
+    }
+
+    if (!clientClosed) res.end();
+  }),
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESUMEN / QUIZ / STUDY POR resourceId
+// ═══════════════════════════════════════════════════════════════════════════
+
+// POST /resources/:id/summary
+// body: { summaryType?, userId?, maxChars? }
+router.post(
+  "/:id/summary",
+  asyncHandler(async (req, res) => {
+    const summary = await summarizeResource({
+      resourceId: req.params.id,
+      summaryType: req.body.summaryType || "study_guide",
+      userId: req.body.userId || null,
+      maxChars: req.body.maxChars ? Number(req.body.maxChars) : undefined,
+    });
+    res.json({ ok: true, summary });
+  }),
+);
+
+// POST /resources/:id/quiz
+// body: { questionCount?, userId?, assignmentId?, maxChars? }
+router.post(
+  "/:id/quiz",
+  asyncHandler(async (req, res) => {
+    const result = await createQuizFromResource({
+      resourceId: req.params.id,
+      questionCount: Number(req.body.questionCount || 5),
+      userId: req.body.userId || null,
+      assignmentId: req.body.assignmentId || null,
+      maxChars: req.body.maxChars ? Number(req.body.maxChars) : undefined,
+    });
+    res.json({ ok: true, ...result });
+  }),
+);
+
+// POST /resources/:id/study  — combo summary + quiz + keyConcepts + outline
+// body: { questionCount?, summaryType?, userId?, maxChars? }
+router.post(
+  "/:id/study",
+  asyncHandler(async (req, res) => {
+    const result = await generateStudyPack({
+      resourceId: req.params.id,
+      questionCount: Number(req.body.questionCount || 5),
+      summaryType: req.body.summaryType || "study_guide",
+      userId: req.body.userId || null,
+      maxChars: req.body.maxChars ? Number(req.body.maxChars) : undefined,
+    });
+    res.json({ ok: true, ...result });
   }),
 );
 

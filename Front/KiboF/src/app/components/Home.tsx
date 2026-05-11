@@ -1,50 +1,58 @@
-import { useNavigate } from 'react-router';
-import { useAuth } from '../contexts/AuthContext';
-import { useTasks } from '../contexts/TaskContext';
-import { Calendar, BookOpen, MessageSquare, Library as LibraryIcon, CheckCircle2, Clock, TrendingUp } from 'lucide-react';
-import { ElephantMascot } from './ElephantMascot';
-import { motion } from 'motion/react';
-import { format, isToday, isTomorrow } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { useNavigate } from "react-router";
+import { useAuth } from "../contexts/AuthContext";
+import { useTasks } from "../contexts/TaskContext";
+import {
+  Calendar,
+  BookOpen,
+  MessageSquare,
+  Library as LibraryIcon,
+  CheckCircle2,
+  Clock,
+  TrendingUp,
+} from "lucide-react";
+import { ElephantMascot } from "./ElephantMascot";
+import { motion } from "motion/react";
+import { format, isToday, isTomorrow } from "date-fns";
+import { es } from "date-fns/locale";
 
 export function Home() {
   const { user } = useAuth();
   const { tasks } = useTasks();
   const navigate = useNavigate();
 
-  const incompleteTasks = tasks.filter(t => !t.completed);
-  const completedTasks = tasks.filter(t => t.completed);
-  const todayTasks = tasks.filter(t => isToday(t.dueDate));
-  const tomorrowTasks = tasks.filter(t => isTomorrow(t.dueDate));
+  const incompleteTasks = tasks.filter((t) => !t.completed);
+  const completedTasks = tasks.filter((t) => t.completed);
+  const todayTasks = incompleteTasks.filter((t) => isToday(t.dueDate));
+  const tomorrowTasks = incompleteTasks.filter((t) => isTomorrow(t.dueDate));
 
   const quickActions = [
     {
-      title: 'Calendario',
-      description: 'Organiza tus tareas',
+      title: "Calendario",
+      description: "Organiza tus tareas",
       icon: Calendar,
-      color: 'from-primary to-accent',
-      path: '/calendar',
+      color: "from-primary to-accent",
+      path: "/calendar",
     },
     {
-      title: 'Recomendaciones',
-      description: 'Recursos personalizados',
+      title: "Recomendaciones",
+      description: "Recursos personalizados",
       icon: BookOpen,
-      color: 'from-accent to-primary',
-      path: '/recommendations',
+      color: "from-accent to-primary",
+      path: "/recommendations",
     },
     {
-      title: 'Asistente',
-      description: 'Habla con Kibo',
+      title: "Asistente",
+      description: "Habla con Kibo",
       icon: MessageSquare,
-      color: 'from-primary to-accent',
-      path: '/chatbot',
+      color: "from-primary to-accent",
+      path: "/chatbot",
     },
     {
-      title: 'Biblioteca',
-      description: 'Explora libros',
+      title: "Biblioteca",
+      description: "Explora libros",
       icon: LibraryIcon,
-      color: 'from-accent to-primary',
-      path: '/library',
+      color: "from-accent to-primary",
+      path: "/library",
     },
   ];
 
@@ -59,7 +67,7 @@ export function Home() {
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
             <div>
               <h1 className="text-2xl md:text-4xl font-bold text-foreground mb-2">
-                ¡Hola, {user?.name}! 👋
+                ¡Hola, {user?.name}!
               </h1>
               <p className="text-muted-foreground text-base md:text-lg">
                 {format(new Date(), "EEEE, d 'de' MMMM", { locale: es })}
@@ -72,7 +80,7 @@ export function Home() {
               transition={{
                 duration: 3,
                 repeat: Infinity,
-                ease: 'easeInOut',
+                ease: "easeInOut",
               }}
             >
               <ElephantMascot size="large" />
@@ -93,7 +101,9 @@ export function Home() {
               </div>
               <div>
                 <p className="text-muted-foreground mb-1">Tareas pendientes</p>
-                <h2 className="text-3xl font-bold text-foreground">{incompleteTasks.length}</h2>
+                <h2 className="text-3xl font-bold text-foreground">
+                  {incompleteTasks.length}
+                </h2>
               </div>
             </div>
           </motion.div>
@@ -110,7 +120,9 @@ export function Home() {
               </div>
               <div>
                 <p className="text-muted-foreground mb-1">Completadas</p>
-                <h2 className="text-3xl font-bold text-foreground">{completedTasks.length}</h2>
+                <h2 className="text-3xl font-bold text-foreground">
+                  {completedTasks.length}
+                </h2>
               </div>
             </div>
           </motion.div>
@@ -128,7 +140,10 @@ export function Home() {
               <div>
                 <p className="text-muted-foreground mb-1">Progreso</p>
                 <h2 className="text-3xl font-bold text-foreground">
-                  {tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0}%
+                  {tasks.length > 0
+                    ? Math.round((completedTasks.length / tasks.length) * 100)
+                    : 0}
+                  %
                 </h2>
               </div>
             </div>
@@ -155,9 +170,11 @@ export function Home() {
                 >
                   <div className="w-2 h-2 bg-primary rounded-full" />
                   <div className="flex-1">
-                    <h3 className="font-medium text-foreground">{task.title}</h3>
+                    <h3 className="font-medium text-foreground">
+                      {task.title}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
-                      Hoy a las {format(task.dueDate, 'HH:mm')}
+                      Hoy a las {format(task.dueDate, "HH:mm")}
                     </p>
                   </div>
                   <span className="px-3 py-1 bg-primary text-primary-foreground rounded-full text-sm font-medium">
@@ -173,9 +190,11 @@ export function Home() {
                 >
                   <div className="w-2 h-2 bg-accent rounded-full" />
                   <div className="flex-1">
-                    <h3 className="font-medium text-foreground">{task.title}</h3>
+                    <h3 className="font-medium text-foreground">
+                      {task.title}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
-                      Mañana a las {format(task.dueDate, 'HH:mm')}
+                      Mañana a las {format(task.dueDate, "HH:mm")}
                     </p>
                   </div>
                   <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-sm font-medium">
@@ -192,7 +211,9 @@ export function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <h2 className="text-2xl font-bold text-foreground mb-6">Acceso rápido</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-6">
+            Acceso rápido
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {quickActions.map((action, index) => (
               <motion.button
@@ -203,11 +224,17 @@ export function Home() {
                 onClick={() => navigate(action.path)}
                 className="group relative bg-card rounded-2xl shadow-lg border border-border p-6 hover:shadow-xl transition-all overflow-hidden"
               >
-                <div className={`absolute inset-0 bg-gradient-to-br ${action.color} opacity-0 group-hover:opacity-5 transition-opacity`} />
-                <div className={`w-14 h-14 bg-gradient-to-br ${action.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                <div
+                  className={`absolute inset-0 bg-gradient-to-br ${action.color} opacity-0 group-hover:opacity-5 transition-opacity`}
+                />
+                <div
+                  className={`w-14 h-14 bg-gradient-to-br ${action.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
+                >
                   <action.icon className="w-7 h-7 text-white" />
                 </div>
-                <h3 className="text-lg font-bold text-foreground mb-2">{action.title}</h3>
+                <h3 className="text-lg font-bold text-foreground mb-2">
+                  {action.title}
+                </h3>
                 <p className="text-muted-foreground">{action.description}</p>
               </motion.button>
             ))}

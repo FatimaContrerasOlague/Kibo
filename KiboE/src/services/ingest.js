@@ -7,6 +7,7 @@ const {
   buildPdfChunks,
   buildPdfMetadata,
   extractPdfFromUrl,
+  extractPdfText,
   estimateTokenCount,
   validatePdfUrl,
 } = require("./pdf/pdf.service");
@@ -253,12 +254,14 @@ async function persistDocument({
   chunks,
   force = false,
   resourceAttrs,
+  onProgress = () => {},
 }) {
   if (chunks.length === 0) {
     throw new Error("No se generaron chunks a partir del contenido");
   }
 
   // 1) Embeddings en lote (una/pocas llamadas HTTP para todo el documento)
+  onProgress({ stage: "embeddings_start", chunks: chunks.length });
   const t0 = Date.now();
   const embedResults = await getEmbeddingsBatch(
     chunks.map((c) => c.content),
@@ -267,6 +270,11 @@ async function persistDocument({
   console.log(
     `[ingest] ${chunks.length} embeddings generados en ${elapsed}s (batch)`,
   );
+  onProgress({
+    stage: "embeddings_done",
+    chunks: chunks.length,
+    seconds: Number(elapsed),
+  });
 
   const successfulChunks = [];
   let failed = 0;
@@ -285,6 +293,8 @@ async function persistDocument({
   if (successfulChunks.length === 0) {
     throw new Error("Todos los embeddings fallaron; no se ingesto nada");
   }
+
+  onProgress({ stage: "db_start", chunks: successfulChunks.length });
 
   // 2) Transaccion DB
   return db.withTransaction(async (client) => {
@@ -398,6 +408,81 @@ async function bulkInsertChunks(client, documentId, chunks) {
   return chunks.length;
 }
 
+// ─── INGESTA DE PDF DESDE BUFFER (file upload) ──────────────────────────────
+//
+// Acepta el buffer de un PDF (por ejemplo el de multer.memoryStorage) y lo
+// trata como cualquier otro recurso PDF. Construye una URL sintetica
+// "upload://<timestamp>-<archivo>" para mantener la unicidad en DB.
+async function ingestPdfBuffer({
+  buffer,
+  originalFilename = null,
+  title = null,
+  subject = null,
+  gradeLevel = null,
+  sourceName = "upload",
+  force = false,
+  onProgress = () => {},
+}) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error("buffer vacio o invalido");
+  }
+
+  const safeName = (originalFilename || "archivo.pdf")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .slice(0, 120);
+  const syntheticUrl = `upload://${Date.now()}-${safeName}`;
+  const documentTitle =
+    title ||
+    (originalFilename
+      ? originalFilename.replace(/\.pdf$/i, "")
+      : "PDF subido");
+
+  console.log(
+    `[ingest] Ingesta desde buffer: ${safeName} (${(buffer.length / 1024).toFixed(0)} KB)`,
+  );
+
+  onProgress({ stage: "parsing_pdf", filename: safeName });
+  const extracted = await extractPdfText(buffer);
+  onProgress({
+    stage: "pdf_parsed",
+    pageCount: extracted.pageCount,
+    extractedChars: extracted.content.length,
+  });
+
+  const metadata = buildPdfMetadata(extracted);
+  const chunks = buildPdfChunks(extracted.pages, DEFAULT_CHUNK_SIZE);
+
+  const result = await persistDocument({
+    title: documentTitle,
+    content: extracted.content,
+    chunks,
+    force,
+    resourceAttrs: {
+      title: documentTitle,
+      url: syntheticUrl,
+      sourceName,
+      resourceType: "pdf",
+      subject,
+      gradeLevel,
+      metadata,
+    },
+    onProgress,
+  });
+
+  onProgress({
+    stage: "ingest_done",
+    resourceId: result.resourceId,
+    documentId: result.documentId,
+    chunksInserted: result.chunksInserted,
+  });
+
+  return {
+    ...result,
+    metadata,
+    alreadyExists: false,
+  };
+}
+
 async function findResourceByUrl(url) {
   const result = await db.query(
     `
@@ -463,6 +548,7 @@ async function ingestUrls(items, commonOptions = {}) {
 
 module.exports = {
   ingestDocument,
+  ingestPdfBuffer,
   ingestPdfUrl,
   ingestPdfUrls,
   ingestUrl,
