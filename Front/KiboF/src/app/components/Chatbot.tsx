@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react';
 import { useTasks } from '../contexts/TaskContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Send, Paperclip, Sparkles, Bell, X } from 'lucide-react';
 import { ElephantMascot } from './ElephantMascot';
 import { NotificationPanel } from './NotificationPanel';
 import { motion, AnimatePresence } from 'motion/react';
+import { apiRequest } from '../services/api';
 
 interface Message {
   id: string;
@@ -22,12 +24,14 @@ export function Chatbot() {
     },
   ]);
   const [input, setInput] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { tasks } = useTasks();
+  const { user } = useAuth();
 
-  const handleSendMessage = () => {
-    if (!input.trim()) return;
+  const handleSendMessage = async () => {
+    if (!input.trim() || !user?.id || isSending) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -38,39 +42,84 @@ export function Chatbot() {
 
     setMessages([...messages, userMessage]);
     setInput('');
+    setIsSending(true);
 
-    setTimeout(() => {
-      const botResponse = generateBotResponse(input);
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: botResponse,
-        sender: 'bot',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, botMessage]);
-    }, 1000);
+    try {
+      const payload = await apiRequest<{ conversation: Array<{ id: string; role: 'user' | 'assistant'; message: string; createdAt: string }> }>('/chatbot/chat', {
+        method: 'POST',
+        body: {
+          userId: user.id,
+          message: userMessage.text,
+        },
+      });
+
+      const bot = payload.conversation.find((msg) => msg.role === 'assistant');
+      if (bot) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: bot.id,
+            text: bot.message,
+            sender: 'bot',
+            timestamp: new Date(bot.createdAt),
+          },
+        ]);
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          text: 'No pude conectar con el servicio de chatbot. Intenta nuevamente en unos segundos.',
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const generateBotResponse = (userInput: string): string => {
-    const inputLower = userInput.toLowerCase();
-
-    if (inputLower.includes('tarea') || inputLower.includes('pendiente')) {
-      const incompleteTasks = tasks.filter(t => !t.completed);
-      if (incompleteTasks.length === 0) {
-        return '¡Excelente! No tienes tareas pendientes en este momento. 🎉';
-      }
-      return `Tienes ${incompleteTasks.length} tarea${incompleteTasks.length > 1 ? 's' : ''} pendiente${incompleteTasks.length > 1 ? 's' : ''}. Te recomiendo revisar el calendario para organizarte mejor.`;
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user?.id) {
+      return;
     }
 
-    if (inputLower.includes('ayuda') || inputLower.includes('qué puedes hacer')) {
-      return 'Puedo ayudarte a:\n• Ver tus tareas pendientes\n• Recordarte plazos importantes\n• Sugerir libros para tus temas de estudio\n• Darte consejos para organizar tu tiempo\n¿Qué te gustaría hacer?';
-    }
+    const content = await file.text();
 
-    if (inputLower.includes('consejo') || inputLower.includes('tip')) {
-      return 'Aquí va un consejo: Divide las tareas grandes en pequeñas acciones. Es más fácil empezar cuando el primer paso es simple. ¡Tú puedes! 💪';
-    }
+    try {
+      await apiRequest<{ file: { id: string } }>('/chatbot/files', {
+        method: 'POST',
+        body: {
+          userId: user.id,
+          fileName: file.name,
+          content,
+        },
+      });
 
-    return 'Entiendo. ¿Hay algo específico en lo que pueda ayudarte? Puedo responder preguntas sobre tus tareas, darte consejos de estudio o recomendarte recursos.';
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `file-${Date.now()}`,
+          text: `Archivo "${file.name}" subido correctamente. Ya puedes consultarme sobre su contenido.`,
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `file-error-${Date.now()}`,
+          text: `No pude subir el archivo "${file.name}". Intenta nuevamente.`,
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      event.target.value = '';
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -148,6 +197,7 @@ export function Chatbot() {
                 ref={fileInputRef}
                 className="hidden"
                 accept=".pdf,.doc,.docx,.txt"
+                onChange={handleFileUpload}
               />
               <input
                 type="text"
@@ -159,10 +209,11 @@ export function Chatbot() {
               />
               <button
                 onClick={handleSendMessage}
+                disabled={isSending}
                 className="px-4 md:px-6 py-2 md:py-3 bg-gradient-to-r from-primary to-accent text-white rounded-xl hover:shadow-lg transition-all flex items-center gap-2"
               >
                 <Send className="w-4 h-4 md:w-5 md:h-5" />
-                <span className="hidden md:inline">Enviar</span>
+                <span className="hidden md:inline">{isSending ? 'Enviando...' : 'Enviar'}</span>
               </button>
             </div>
           </div>

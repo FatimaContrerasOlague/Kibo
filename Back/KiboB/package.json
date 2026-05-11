@@ -2,9 +2,13 @@
   "name": "kibob",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "chatbot": "node chatbot-service/src/server.js",
+    "start:all": "node scripts/start-all.js",
+    "test": "echo \"No tests configured\""
   },
   "keywords": [],
   "author": "",

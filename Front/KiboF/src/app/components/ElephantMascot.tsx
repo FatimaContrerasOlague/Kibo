@@ -14,7 +14,7 @@ export function ElephantMascot({ size = 'medium', animate = true }: ElephantMasc
 
   return (
     <motion.div
-      className={`${dimensions[size]} relative`}
+      className={`${dimensions[size]} relative scale-110`}
       animate={animate ? {
         y: [0, -8, 0],
       } : {}}
