@@ -1,0 +1,12 @@
+# Node
+node_modules
+npm-debug.log*
+yarn-error.log*
+.npm-cache
+.DS_Store
+
+# Entornos
+.env
+.env.local
+backen/.env
+**/.env
