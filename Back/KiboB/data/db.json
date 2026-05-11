@@ -1,0 +1,48 @@
+{
+  "users": [
+    {
+      "id": "usr_68ad0836-0b3c-40eb-a43a-72d7f8275966",
+      "name": "Demo",
+      "email": "demo@kibo.local",
+      "passwordHash": "084f654d50e7f48880e7345ab44dc665:2c0227a0d4378a274b717baa70f530fd12ce2c7d90d63d3bc598b862cd563a876e7ee97210663565b47893dd9b39dc993718665272dfe055a2dbb698681c4226",
+      "createdAt": "2026-05-11T19:42:21.813Z"
+    },
+    {
+      "id": "usr_79842d0d-18e9-414b-80b6-754f97d3f4b3",
+      "name": "admin1",
+      "email": "sara@tecnm.mx",
+      "passwordHash": "5fe3e57322e563dc73d4e506f66dbcf8:7bb3cac0737c9a862a0b3665a8c8648f658ed8835d10eeaf5b6b59257aade31c92c55e36246750c71f5f1d0d70e43e29dc4f7fb558ea33b458d132e16228ed99",
+      "createdAt": "2026-05-11T20:14:47.027Z"
+    },
+    {
+      "id": "usr_9bf4af13-a0ec-4b4f-be58-9fda46132e17",
+      "name": "Keldeo ex",
+      "email": "facundocamila@tecnm.edu",
+      "passwordHash": "1c744e1dcc204e183bb2d62b52ddebb4:748d9d5c6fd0233fc27427d92fe48c0be3e16252e0e2c9bfba1647f23401d756ad4746e294e04c35b9b5a5d59ec67aec4cc0d9c5f44ceb1c08244e8f24879750",
+      "createdAt": "2026-05-11T20:20:40.574Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "tsk_e28f3367-df5e-448c-b862-eebaec11286c",
+      "userId": "usr_68ad0836-0b3c-40eb-a43a-72d7f8275966",
+      "title": "Estudiar React Hooks",
+      "description": "Repasar contexto y hooks",
+      "dueAt": "2026-05-11T22:42:21.822Z",
+      "completed": false,
+      "createdAt": "2026-05-11T19:42:21.825Z",
+      "updatedAt": "2026-05-11T19:42:21.825Z"
+    },
+    {
+      "id": "tsk_53f00805-4aa0-4cdb-bbf7-03fbcff8fbaa",
+      "userId": "usr_79842d0d-18e9-414b-80b6-754f97d3f4b3",
+      "title": "PP",
+      "description": "PPP",
+      "dueAt": "2026-05-26T18:00:00.000Z",
+      "completed": true,
+      "createdAt": "2026-05-11T20:16:37.690Z",
+      "updatedAt": "2026-05-11T20:19:07.946Z"
+    }
+  ],
+  "chatbotFiles": []
+}

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { Home, Calendar, Lightbulb, MessageSquare, Library as LibraryIcon, LogOut } from 'lucide-react';
-import { KiboLogo } from './KiboLogo';
+import { Home, Calendar, Lightbulb, MessageSquare, Library as LibraryIcon, LogOut, Moon, Sun } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useTheme } from '../contexts/ThemeContext';
 
 export function Navbar() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -34,7 +35,10 @@ export function Navbar() {
             className="cursor-pointer"
             onClick={() => navigate('/home')}
           >
-            <KiboLogo size="small" />
+            <div className="flex items-center gap-2">
+              <img src="/favicon.svg" alt="Kibo" className="w-8 h-8" />
+              <span className="text-foreground font-bold text-xl leading-none">Kibo</span>
+            </div>
           </motion.div>
 
           {/* Desktop Navigation */}
@@ -104,6 +108,13 @@ export function Navbar() {
               <p className="font-medium text-foreground">{user?.name}</p>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
             </div>
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              title={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
             <button
               onClick={handleLogout}
               className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"

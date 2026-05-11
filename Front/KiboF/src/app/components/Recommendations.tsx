@@ -1,54 +1,65 @@
 import { useTasks } from '../contexts/TaskContext';
+import { useEffect, useState } from 'react';
 import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BookOpen, ExternalLink, Calendar, Lightbulb } from 'lucide-react';
 import { ElephantMascot } from './ElephantMascot';
+import { apiRequest } from '../services/api';
 
-const mockBooks = [
-  {
-    id: 1,
-    title: 'React Patterns',
-    author: 'Michael Chan',
-    cover: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    topics: ['react', 'hooks', 'patterns'],
-  },
-  {
-    id: 2,
-    title: 'TypeScript Deep Dive',
-    author: 'Basarat Ali Syed',
-    cover: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    topics: ['typescript', 'types', 'advanced'],
-  },
-  {
-    id: 3,
-    title: 'Clean Code',
-    author: 'Robert C. Martin',
-    cover: 'https://images.unsplash.com/photo-1589998059171-988d887df646?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    topics: ['programming', 'best practices'],
-  },
-  {
-    id: 4,
-    title: 'JavaScript: The Good Parts',
-    author: 'Douglas Crockford',
-    cover: 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    topics: ['javascript', 'fundamentals'],
-  },
-];
+interface RecommendedBook {
+  id: string;
+  title: string;
+  author: string;
+  cover: string;
+  pdfLink: string;
+}
+
+interface TaskRecommendation {
+  bestDay: string;
+  recommendations: RecommendedBook[];
+}
 
 export function Recommendations() {
   const { tasks } = useTasks();
   const incompleteTasks = tasks.filter(task => !task.completed);
+  const [recommendationByTask, setRecommendationByTask] = useState<Record<string, TaskRecommendation>>({});
 
-  const getRecommendedBooks = (taskTitle: string) => {
-    const titleLower = taskTitle.toLowerCase();
-    return mockBooks.filter(book =>
-      book.topics.some(topic => titleLower.includes(topic))
-    ).slice(0, 2);
-  };
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadRecommendations = async () => {
+      const entries = await Promise.all(
+        incompleteTasks.map(async (task) => {
+          try {
+            const payload = await apiRequest<TaskRecommendation>(
+              `/recommendations?taskId=${encodeURIComponent(task.id)}&limit=2`
+            );
+            return [task.id, payload] as const;
+          } catch {
+            return [
+              task.id,
+              {
+                bestDay: 'Hoy',
+                recommendations: [],
+              },
+            ] as const;
+          }
+        })
+      );
+
+      if (!isMounted) {
+        return;
+      }
+
+      setRecommendationByTask(Object.fromEntries(entries));
+    };
+
+    void loadRecommendations();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [incompleteTasks]);
 
   const getRecommendedDay = (dueDate: Date) => {
     const daysUntilDue = differenceInDays(dueDate, new Date());
@@ -83,8 +94,9 @@ export function Recommendations() {
         ) : (
           <div className="space-y-6">
             {incompleteTasks.map((task) => {
-              const recommendedBooks = getRecommendedBooks(task.title);
-              const recommendedDay = getRecommendedDay(task.dueDate);
+              const taskRecommendation = recommendationByTask[task.id];
+              const recommendedBooks = taskRecommendation?.recommendations || [];
+              const recommendedDay = taskRecommendation?.bestDay || format(getRecommendedDay(task.dueDate), "EEEE d 'de' MMMM", { locale: es });
 
               return (
                 <div
@@ -113,7 +125,7 @@ export function Recommendations() {
                       </div>
                       <div className="bg-secondary rounded-lg p-4 border border-border">
                         <p className="text-primary">
-                          {format(recommendedDay, "EEEE d 'de' MMMM", { locale: es })}
+                          {recommendedDay}
                         </p>
                         <p className="text-muted-foreground mt-1">
                           Te sugerimos completar esta tarea en esta fecha para mantener un ritmo óptimo

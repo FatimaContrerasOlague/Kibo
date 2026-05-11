@@ -1,83 +1,62 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, ExternalLink, Search, Library as LibraryIcon } from 'lucide-react';
+import { apiRequest } from '../services/api';
 
-const mockLibraryBooks = [
-  {
-    id: 1,
-    title: 'React Patterns',
-    author: 'Michael Chan',
-    cover: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Frontend',
-  },
-  {
-    id: 2,
-    title: 'TypeScript Deep Dive',
-    author: 'Basarat Ali Syed',
-    cover: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Frontend',
-  },
-  {
-    id: 3,
-    title: 'Clean Code',
-    author: 'Robert C. Martin',
-    cover: 'https://images.unsplash.com/photo-1589998059171-988d887df646?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Programming',
-  },
-  {
-    id: 4,
-    title: 'JavaScript: The Good Parts',
-    author: 'Douglas Crockford',
-    cover: 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Frontend',
-  },
-  {
-    id: 5,
-    title: 'Design Patterns',
-    author: 'Gang of Four',
-    cover: 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Programming',
-  },
-  {
-    id: 6,
-    title: 'The Pragmatic Programmer',
-    author: 'Andrew Hunt',
-    cover: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Career',
-  },
-  {
-    id: 7,
-    title: 'You Don\'t Know JS',
-    author: 'Kyle Simpson',
-    cover: 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Frontend',
-  },
-  {
-    id: 8,
-    title: 'Refactoring',
-    author: 'Martin Fowler',
-    cover: 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=400&h=600&fit=crop',
-    pdfLink: '#',
-    category: 'Programming',
-  },
-];
+interface LibraryBook {
+  id: string;
+  title: string;
+  author: string;
+  cover: string;
+  pdfLink: string;
+  topics?: string[];
+}
 
 export function Library() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [books, setBooks] = useState<LibraryBook[]>([]);
 
-  const categories = ['all', ...Array.from(new Set(mockLibraryBooks.map(book => book.category)))];
+  useEffect(() => {
+    let isMounted = true;
 
-  const filteredBooks = mockLibraryBooks.filter(book => {
+    const loadBooks = async () => {
+      try {
+        const payload = await apiRequest<{ books: LibraryBook[] }>(
+          `/books/search?q=${encodeURIComponent(searchQuery || 'productividad')}&limit=24`
+        );
+
+        if (!isMounted) {
+          return;
+        }
+
+        setBooks(payload.books || []);
+      } catch {
+        if (isMounted) {
+          setBooks([]);
+        }
+      }
+    };
+
+    void loadBooks();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchQuery]);
+
+  const categories = useMemo(
+    () => [
+      'all',
+      ...Array.from(new Set(books.map((book) => (book.topics?.[0] || 'General').toLowerCase()))),
+    ],
+    [books]
+  );
+
+  const filteredBooks = books.filter(book => {
     const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          book.author.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || book.category === selectedCategory;
+    const category = (book.topics?.[0] || 'General').toLowerCase();
+    const matchesCategory = selectedCategory === 'all' || category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
@@ -119,7 +98,7 @@ export function Library() {
                     : 'bg-secondary text-foreground hover:bg-muted hover:shadow-sm'
                 }`}
               >
-                {category === 'all' ? 'Todos' : category}
+                    {category === 'all' ? 'Todos' : category.charAt(0).toUpperCase() + category.slice(1)}
               </button>
             ))}
           </div>
@@ -154,7 +133,7 @@ export function Library() {
                   </h3>
                   <p className="text-muted-foreground mb-2">{book.author}</p>
                   <span className="inline-block px-2 py-1 bg-secondary text-foreground rounded text-sm">
-                    {book.category}
+                    {(book.topics?.[0] || 'General')}
                   </span>
                   <div className="flex items-center gap-2 mt-3 text-primary">
                     <ExternalLink className="w-4 h-4" />

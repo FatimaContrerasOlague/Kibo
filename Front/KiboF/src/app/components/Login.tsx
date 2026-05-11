@@ -1,33 +1,49 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { LogIn } from 'lucide-react';
-import { KiboLogo } from './KiboLogo';
+import { LogIn, Moon, Sun } from 'lucide-react';
+import { ElephantMascot } from './ElephantMascot';
+import { useTheme } from '../contexts/ThemeContext';
 
 export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSubmitting(true);
 
-    if (login(email, password)) {
+    if (await login(email, password)) {
       navigate('/home');
     } else {
-      setError('Por favor ingresa email y contraseña válidos');
+      setError('Credenciales inválidas. Verifica tu correo y contraseña.');
     }
+
+    setIsSubmitting(false);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-secondary via-background to-secondary">
       <div className="w-full max-w-md">
         <div className="bg-card rounded-3xl shadow-2xl p-8 border border-border">
-          <div className="flex justify-center mb-6">
-            <KiboLogo size="large" showText={false} />
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              title={theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'}
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+          </div>
+          <div className="flex justify-center mb-4">
+            <ElephantMascot size="large" />
           </div>
 
           <h1 className="text-center text-foreground mb-2">Bienvenido a Kibo</h1>
@@ -45,7 +61,7 @@ export function Login() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-input-background rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                className="w-full px-4 py-3 bg-input-background text-foreground placeholder:text-muted-foreground rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-ring transition-all"
                 placeholder="tu@email.com"
                 required
               />
@@ -60,7 +76,7 @@ export function Login() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-input-background rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                className="w-full px-4 py-3 bg-input-background text-foreground placeholder:text-muted-foreground rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-ring transition-all"
                 placeholder="••••••••"
                 required
               />
@@ -72,10 +88,11 @@ export function Login() {
 
             <button
               type="submit"
+              disabled={isSubmitting}
               className="w-full bg-gradient-to-r from-primary to-accent text-white px-6 py-3 rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 font-medium"
             >
               <LogIn className="w-5 h-5" />
-              Iniciar sesión
+              {isSubmitting ? 'Ingresando...' : 'Iniciar sesión'}
             </button>
           </form>
 

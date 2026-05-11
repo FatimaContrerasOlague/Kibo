@@ -1,0 +1,19 @@
+{
+  "messages": [
+    {
+      "id": "msg_8390731f-0061-47ab-aa0b-cbae8aed637d",
+      "userId": "usr_79842d0d-18e9-414b-80b6-754f97d3f4b3",
+      "role": "user",
+      "message": "Hola",
+      "createdAt": "2026-05-11T20:15:50.548Z"
+    },
+    {
+      "id": "msg_ea9e2319-622c-4c40-85d2-3b60b4f0167b",
+      "userId": "usr_79842d0d-18e9-414b-80b6-754f97d3f4b3",
+      "role": "assistant",
+      "message": "Kibo IA: Recibi tu mensaje. Sugerencia breve: divide la tarea en pasos de 25 minutos y revisa una fuente confiable para avanzar hoy.",
+      "createdAt": "2026-05-11T20:15:50.548Z"
+    }
+  ],
+  "files": []
+}
