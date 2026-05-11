@@ -42,8 +42,35 @@
       "completed": true,
       "createdAt": "2026-05-11T20:16:37.690Z",
       "updatedAt": "2026-05-11T20:19:07.946Z"
+    },
+    {
+      "id": "tsk_87088833-af47-4000-90c4-799d35aa3919",
+      "userId": "c4616012-3ecf-4bcf-9ec0-8cd393e814c2",
+      "title": "Tarea Algebra",
+      "description": "Tarea algebra",
+      "dueAt": "2026-05-12T18:00:00.000Z",
+      "completed": false,
+      "createdAt": "2026-05-11T22:55:44.109Z",
+      "updatedAt": "2026-05-11T22:55:44.109Z"
+    },
+    {
+      "id": "tsk_14623605-99c6-4e69-b5f9-9c87edcd0fe2",
+      "userId": "4eac0fde-da9e-4649-aec0-ed5e324d8b8b",
+      "title": "Tarea Ingles",
+      "description": "Ingles",
+      "dueAt": "2026-05-13T18:00:00.000Z",
+      "completed": false,
+      "createdAt": "2026-05-11T22:56:28.538Z",
+      "updatedAt": "2026-05-11T22:56:28.538Z"
     }
   ],
   "chatbotFiles": [],
-  "chatbotSessions": []
+  "chatbotSessions": [
+    {
+      "userId": "c4616012-3ecf-4bcf-9ec0-8cd393e814c2",
+      "sessionId": "3",
+      "createdAt": "2026-05-11T23:03:10.142Z",
+      "updatedAt": "2026-05-11T23:03:43.667Z"
+    }
+  ]
 }
